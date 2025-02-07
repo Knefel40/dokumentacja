@@ -1,1 +1,361 @@
 
+Dokumentacja aplikacji FBoxScores
+
+
+1. Opis projektu
+
+
+Aplikacja FBoxScores to system do zarządzania wynikami gier piłkarskich. Umożliwia ona:
+
+
+Pobieranie i wyświetlanie wyników ostatnich gier,
+
+
+Analizowanie efektywności graczy,
+
+
+Filtrowanie wyników według klubów, pozycji i gier,
+
+
+Automatyczne odświeżanie wyników w czasie rzeczywistym (co sekundę),
+
+
+Dynamiczne dostosowywanie interfejsu na podstawie ustawień konfiguracyjnych.
+
+
+
+Aplikacja wykorzystuje Entity Framework do komunikacji z bazą danych oraz WPF do budowy interfejsu użytkownika.
+
+
+
+---
+
+
+2. Wersjonowanie obiektów
+
+
+Aby zapewnić czytelność kodu i kontrolę nad zmianami, zastosowano spójne wersjonowanie obiektów:
+
+
+v1.0.0 – Pierwsza wersja aplikacji
+
+
+Implementacja głównych funkcjonalności (wyświetlanie wyników, filtrowanie, odświeżanie)
+
+
+Dodanie obsługi ustawień konfiguracyjnych
+
+
+Wprowadzenie interfejsu w technologii WPF
+
+
+
+v1.1.0 – Optymalizacja kodu i poprawki
+
+
+Poprawa wydajności poprzez optymalizację zapytań do bazy
+
+
+Stworzenie Części wizualnej
+
+
+Ulepszenie interfejsu użytkownika
+
+
+
+
+
+v1.2.0 – Ostatnie Poprawkii
+
+
+Implementacja nowych wymagań product ownera
+
+
+
+
+3. Spójne nazewnictwo i struktura plików
+
+
+Struktura katalogów
+
+
+/FBoxScores
+
+│── /Entities               // Modele encji bazy danych  
+
+│── /Util                   // Narzędzia pomocnicze, np. wyszukiwanie  
+
+│── /Views                  // Pliki XAML i logika UI  
+
+│── MainWindow.xaml.cs       // Główna klasa okna aplikacji  
+
+│── App.xaml.cs              // Główne ustawienia aplikacji  
+
+│── FBoxScores.csproj        // Plik projektu
+
+
+Konwencje nazewnictwa
+
+
+Klasy – PascalCase (np. MainWindow, PlayerEffectiveness)
+
+
+Metody – PascalCase (np. RefreshData(), ApplyConfiguration())
+
+
+Zmienne prywatne – camelCase (np. settings, context)
+
+
+Stałe – SCREAMING_SNAKE_CASE (np. DEFAULT_REFRESH_INTERVAL)
+
+
+Pliki – Nazwy odpowiadające klasom (MainWindow.xaml.cs, Search.cs)
+
+
+
+
+
+4. Metryka zmian (Changelog)
+
+
+v1.0.0 (10.03.2024)
+
+
+Pierwsza wersja aplikacji:
+
+
+Pobieranie i wyświetlanie wyników
+
+
+Obsługa filtrów i konfiguracji
+
+
+
+
+
+
+
+v1.1.0 (15.03.2024)
+
+
+Optymalizacja kodu:
+
+
+Poprawa wydajności zapytań do bazy
+
+
+Obsługa błędów
+
+
+
+v1.2.0 (30.03.2024
+
+
+ Rozszerzenie funkcjonalności:
+
+
+Dodanie nowych filtrów
+
+
+Wsparcie dla nowych typów wyników
+
+
+
+
+
+5. Opis kodu
+
+
+5.1. Konstruktor MainWindow()
+
+
+public MainWindow()
+
+{
+
+    InitializeComponent();
+
+    settings = ConfigurationManager.OpenExeConfiguration(ConfigurationUserLevel.None).AppSettings.Settings;
+
+    context = new TrenazerpilkarskiContext(settings["database_connection"].Value);
+
+    ApplyConfiguration();
+
+    
+
+    timer.Interval = TimeSpan.FromSeconds(1);
+
+    timer.Tick += OnTimerTick;
+
+    timer.Start();
+
+    
+
+    search = new Search(context);
+
+    FilteredPlayersEffectiveness.ItemsSource = search.UpdateResults();
+
+}
+
+
+Opis:
+
+
+Inicjalizuje interfejs aplikacji,
+
+Pobiera ustawienia konfiguracyjne,
+
+Tworzy kontekst bazy danych
+
+Uruchamia timer do automatycznego odświeżania wyników,
+
+Inicjalizuje mechanizm wyszukiwania
+
+
+5.2. Metoda RefreshData()
+
+
+private void RefreshData()
+
+{
+
+    context = new TrenazerpilkarskiContext(settings["database_connection"].Value);
+
+    var latestGameRecord = context.GameRecords.Include("GameConfig").OrderByDescending(g => g.Id).FirstOrDefault();
+
+    if (latestGameRecord == null) return;
+
+    
+
+    RefreshLastGameScoresboardSection(latestGameRecord);
+
+    RefreshLastGameEffectivenessSection(latestGameRecord);
+
+    RefreshEffectivenessDetailsSection();
+
+}
+
+
+Opis:
+
+Pobiera najnowsze dane z bazy,
+
+Jeśli brak nowych danych – kończy działanie,
+
+Aktualizuje sekcje wyników, efektywności i filtrów.
+
+
+
+5.3. Metoda RefreshLastGameScoresboardSection()
+
+
+private void RefreshLastGameScoresboardSection(GameRecord gameRecord)
+
+{
+
+    if (gameRecord != null && gameRecord.GameConfig != null)
+
+    {
+
+        LastGameName.Content = gameRecord.GameConfig.Name;
+
+
+        var playerScores = context.Scores.Include("Player")
+
+            .Where(s => s.GameRecordId == gameRecord.Id)
+
+            .OrderByDescending(s => s.TotalScore)
+
+            .ToList();
+
+
+        var places = new List<PlayerPlace>();
+
+        LastGameScoreboard.ItemsSource = null;
+
+
+        for (int i = 0; i < playerScores.Count; i++)
+
+        {
+
+            var score = playerScores[i];
+
+            var player = score.Player;
+
+            if (player == null || player.Name == null || player.Surname == null) continue;
+
+
+            places.Add(new PlayerPlace(i + 1, player, null, (int)score.TotalScore, (int)score.TotalScorePercentage));
+
+        }
+
+
+        LastGameScoreboard.ItemsSource = places;
+
+    }
+
+}
+
+
+Opis:
+
+Pobiera i wyświetla listę wyników graczy dla ostatniej gry,
+
+Tworzy dynamicznie obiekty wyników,
+
+Przypisuje wyniki do UI.
+
+
+
+5.4. Obsługa filtrów (np. ClubComboBox_SelectionChanged)
+
+
+private void ClubComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+
+{
+
+    search.SelectedClub = ClubComboBox.SelectedIndex == -1 ? null : (Club)ClubComboBox.SelectedItem;
+
+    FilteredPlayersEffectiveness.ItemsSource = search.UpdateResults();
+
+}
+
+
+Opis:
+
+Sprawdza, czy użytkownik wybrał klub,
+
+Filtruje wyniki na podstawie wyboru,
+
+Aktualizuje widok.
+
+
+
+6. Podsumowanie
+
+
+Aplikacja działa w oparciu o WPF + Entity Framework.
+
+Wprowadzone zostało wersjonowanie kodu oraz metryka zmian.
+
+Stosowana jest spójna konwencja nazewnictwa i organizacji plików.
+
+Kluczowe funkcjonalności to wyświetlanie wyników, filtrowanie i automatyczne odświeżanie.
+
+
+
+Dalsze plany:
+
+
+Brak (zdobyć ocene za to).
+
+
+
+Autor: Miłosz Jędrzejewski
+
+Data: 2025-01-31
+
+Wersja: v1.2.0
+
+
+
